@@ -1,6 +1,6 @@
 package Apache::Filter::HTTPHeadersFixup;
 
-$Apache::Filter::HTTPHeadersFixup::VERSION = '0.04';
+$Apache::Filter::HTTPHeadersFixup::VERSION = '0.05';
 
 use strict;
 use warnings FATAL => 'all';
@@ -98,6 +98,8 @@ sub handle_output {
 
     mydebug "data: $data\n";
 
+    my $c = $f->c;
+    my $ba = $c->bucket_alloc;
     while ($data =~ /(.*\n)/g) {
         my $line = $1;
         mydebug "READ: [$line]";
@@ -110,9 +112,8 @@ sub handle_output {
             my $data = join '', @{ $ctx->{headers} }, "\n";
             $ctx->{headers} = [];
 
-            my $c = $f->c;
-            my $out_bb = APR::Brigade->new($c->pool, $c->bucket_alloc);
-            $out_bb->insert_tail(APR::Bucket->new($data));
+            my $out_bb = APR::Brigade->new($c->pool, $ba);
+            $out_bb->insert_tail(APR::Bucket->new($ba, $data));
 
             my $rv = $f->next->pass_brigade($out_bb);
             return $rv unless $rv == APR::SUCCESS;
@@ -160,8 +161,17 @@ sub handle_input {
                 last;
             }
 
-            $b->read(my $data);
-            $b->remove; # must remove after read, not before
+            my $len = $b->read(my $data);
+
+            # leave the non-data buckets as is
+            unless ($len) {
+                $b->remove;
+                $bb->insert_tail($b);
+                next;
+            }
+
+            # XXX: losing meta buckets here
+            $b->delete;
             mydebug "filter read:\n[$data]";
 
             if ($data =~ /^[\r\n]+$/) {
@@ -209,7 +219,7 @@ sub inject_header_bucket {
 
     # extra debug, wasting cycles
     my $data = shift @{ $ctx->{headers} };
-    $bb->insert_tail(APR::Bucket->new($data));
+    $bb->insert_tail(APR::Bucket->new($bb->bucket_alloc, $data));
     mydebug "injected header: [$data]";
 
     # next filter invocations will bring the request body if any

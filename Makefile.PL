@@ -11,9 +11,8 @@ use Apache::TestMM qw(test clean);
 
 # prerequisites
 my %require = (
-    # the keepalive constants and the keepalives() method added in 1.9913
-    "mod_perl"      => "1.9915",
-    "Apache::Test"  => "1.10", # ipv6 fixes
+    "mod_perl"      => "1.9917",
+    "Apache::Test"  => "1.13",
 );
 
 my @scripts = qw(t/TEST);
@@ -26,9 +25,6 @@ ModPerl::MM::WriteMakefile(
     NAME         => 'Apache::Filter::HTTPHeadersFixup',
     VERSION_FROM => 'lib/Apache/Filter/HTTPHeadersFixup.pm',
     PREREQ_PM    => \%require,
-    dist         => {
-        PREOP => 'pod2text lib/Apache/Filter/HTTPHeadersFixup.pm > $(DISTVNAME)/README',
-    },
     clean        => {
         FILES => "@{ clean_files() }",
     }
