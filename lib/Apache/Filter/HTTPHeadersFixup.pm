@@ -1,20 +1,26 @@
 package Apache::Filter::HTTPHeadersFixup;
 
-$Apache::Filter::HTTPHeadersFixup::VERSION = '0.01';
+$Apache::Filter::HTTPHeadersFixup::VERSION = '0.02_01';
 
 use strict;
 use warnings FATAL => 'all';
 
-use mod_perl 1.9911; # 1.99_10 has a bug in filters insertion code
+use mod_perl 1.9913;
 
 use base qw(Apache::Filter);
 
+use Apache::Connection ();
 use APR::Brigade ();
 use APR::Bucket ();
 
 use Apache::TestTrace;
 
-use Apache::Const -compile => qw(OK DECLINED);
+use constant DEBUG => 0;
+
+use subs qw(mydebug);
+*mydebug = DEBUG ? \&Apache::TestTrace::debug : sub {};
+
+use Apache::Const -compile => qw(OK DECLINED CONN_KEEPALIVE);
 use APR::Const    -compile => ':common';
 
 # this is the function that needs to be overriden
@@ -31,7 +37,7 @@ attributes::->import(__PACKAGE__ => \&handler, "method");
 
 sub handler : FilterConnectionHandler {
 
-    debug join '', "-" x 20 ,
+    mydebug join '', "-" x 20 ,
         (@_ == 6 ? " input" : " output") . " filter called ", "-" x 20;
 
     # $mode, $block, $readbytes are passed only for input filters
@@ -41,39 +47,49 @@ sub handler : FilterConnectionHandler {
 }
 
 sub context {
-    my ($filter) = shift;
+    my ($f) = shift;
 
-    my $ctx;
-    unless ($ctx = $filter->ctx) {
-        debug "filter context init";
+    my $ctx = $f->ctx;
+    unless ($ctx) {
+        mydebug "filter context init";
         $ctx = {
             headers             => [],
             done_with_headers   => 0,
             seen_body_separator => 0,
+            keepalives          => $f->c->keepalives,
         };
         # since we are going to manipulate the reference stored in
         # ctx, it's enough to store it only once, we will get the same
         # reference in the following invocations of that filter
-        $filter->ctx($ctx);
+        $f->ctx($ctx);
+        return $ctx;
     }
+
+    my $c = $f->c;
+    if ($c->keepalive == Apache::CONN_KEEPALIVE &&
+        $ctx->{done_with_headers} &&
+        $c->keepalives > $ctx->{keepalives}) {
+
+        mydebug "a new request resetting the input filter state";
+
+        $ctx->{buckets}             = [];
+        $ctx->{seen_body_separator} = 0;
+        $ctx->{done_with_headers}   = 0;
+        $ctx->{keepalives} = $c->keepalives;
+    }
+
     return $ctx;
 }
 
 sub handle_output {
-    my($class, $filter, $bb) = @_;
+    my($class, $f, $bb) = @_;
 
-    my $ctx = context($filter);
+    my $ctx = context($f);
 
     # handling the HTTP request body
     if ($ctx->{done_with_headers}) {
-        # XXX: when the bug in httpd filter will be fixed remove the
-        # filter:
-        #   $filter->remove;
-        # at the moment (2.0.48) it doesn't work
-        # so meanwhile tell the mod_perl filter core to pass-through
-        # the brigade unmodified
-        debug "passing the body through unmodified";
-        my $rv = $filter->next->pass_brigade($bb);
+        mydebug "passing the body through unmodified";
+        my $rv = $f->next->pass_brigade($bb);
         return $rv unless $rv == APR::SUCCESS;
         return Apache::OK;
     }
@@ -85,11 +101,11 @@ sub handle_output {
         $data .= $bdata;
     }
 
-    debug "data: $data\n";
+    mydebug "data: $data\n";
 
     while ($data =~ /(.*\n)/g) {
         my $line = $1;
-        debug "READ: [$line]";
+        mydebug "READ: [$line]";
         if ($line =~ /^[\r\n]+$/) {
             # let the user function do the manipulation of the headers
             # without the separator, which will be added when the
@@ -98,11 +114,14 @@ sub handle_output {
             $class->manip($ctx->{headers});
             my $data = join '', @{ $ctx->{headers} }, "\n";
             $ctx->{headers} = [];
-            my $c = $filter->c;
+
+            my $c = $f->c;
             my $out_bb = APR::Brigade->new($c->pool, $c->bucket_alloc);
             $out_bb->insert_tail(APR::Bucket->new($data));
-            my $rv = $filter->next->pass_brigade($out_bb);
+
+            my $rv = $f->next->pass_brigade($out_bb);
             return $rv unless $rv == APR::SUCCESS;
+
             return Apache::OK;
             # XXX: is it possible that some data will be along with
             # headers in the same incoming bb?
@@ -116,19 +135,13 @@ sub handle_output {
 }
 
 sub handle_input {
-    my($class, $filter, $bb, $mode, $block, $readbytes) = @_;
+    my($class, $f, $bb, $mode, $block, $readbytes) = @_;
 
-    my $ctx = context($filter);
+    my $ctx = context($f);
 
     # handling the HTTP request body
     if ($ctx->{done_with_headers}) {
-        # XXX: when the bug in httpd filter will be fixed remove the
-        # filter:
-        #   $filter->remove;
-        # at the moment (2.0.48) it doesn't work
-        # so meanwhile tell the mod_perl filter core to pass-through
-        # the brigade unmodified
-        debug "passing the body through unmodified";
+        mydebug "passing the body through unmodified";
         return Apache::DECLINED;
     }
 
@@ -136,10 +149,10 @@ sub handle_input {
     return Apache::OK if inject_header_bucket($bb, $ctx);
 
     # normal HTTP headers processing
-    my $c = $filter->c;
+    my $c = $f->c;
     until ($ctx->{seen_body_separator}) {
         my $ctx_bb = APR::Brigade->new($c->pool, $c->bucket_alloc);
-        my $rv = $filter->next->get_brigade($ctx_bb, $mode, $block, $readbytes);
+        my $rv = $f->next->get_brigade($ctx_bb, $mode, $block, $readbytes);
         return $rv unless $rv == APR::SUCCESS;
 
         while (!$ctx_bb->empty) {
@@ -149,13 +162,13 @@ sub handle_input {
             $bucket->remove;
 
             if ($bucket->is_eos) {
-                debug "EOS!!!";
+                mydebug "EOS!!!";
                 $bb->insert_tail($bucket);
                 last;
             }
 
             my $status = $bucket->read($data);
-            debug "filter read:\n[$data]";
+            mydebug "filter read:\n[$data]";
             return $status unless $status == APR::SUCCESS;
 
             if ($data =~ /^[\r\n]+$/) {
@@ -166,7 +179,7 @@ sub handle_input {
                 # a few extra bucket brigades, we will turn another flag
                 # 'done_with_headers' when 'seen_body_separator' is on and
                 # all headers were sent out
-                debug "END of original HTTP Headers";
+                mydebug "END of original HTTP Headers";
                 $ctx->{seen_body_separator}++;
 
                 # let the user function do the manipulation of the headers
@@ -179,7 +192,7 @@ sub handle_input {
                 # so we send one newly added header and push the separator
                 # to the end of the queue
                 push @{ $ctx->{headers} }, "\n";
-                debug "queued header [$data]";
+                mydebug "queued header [$data]";
                 inject_header_bucket($bb, $ctx);
                 last; # there should be no more headers in $ctx_bb
                 # notice that if we didn't inject any headers, this will
@@ -193,6 +206,7 @@ sub handle_input {
 
     return Apache::OK;
 }
+
 # returns 1 if a bucket with a header was inserted to the $bb's tail,
 # otherwise returns 0 (i.e. if there are no headers to insert)
 sub inject_header_bucket {
@@ -203,7 +217,7 @@ sub inject_header_bucket {
     # extra debug, wasting cycles
     my $data = shift @{ $ctx->{headers} };
     $bb->insert_tail(APR::Bucket->new($data));
-    debug "injected header: [$data]";
+    mydebug "injected header: [$data]";
 
     # next filter invocations will bring the request body if any
     if ($ctx->{seen_body_separator} && !@{ $ctx->{headers} }) {
@@ -257,10 +271,12 @@ Apache::Filter::HTTPHeadersFixup - Manipulate Apache 2 HTTP Headers
 
 C<Apache::Filter::HTTPHeadersFixup> is a super class which provides an
 easy way to manipulate HTTP headers without invoking any mod_perl HTTP
-callbacks. This is accomplished by using input and output connection
+handlers. This is accomplished by using input and/or output connection
 filters.
 
-This class cannot be used as is. It has to be subclassed. Read on.
+It supports KeepAlive connections.
+
+This class cannot be used as is. It has to be sub-classed. Read on.
 
 =head1 Usage
 
@@ -270,27 +286,30 @@ C<manip()>. This function is invoked with two arguments, the package
 it was invoked from and a reference to an array of headers, each
 terminated with a new line.
 
-That function can manipulate the values in that hash. It shouldn't
+That function can manipulate the values in that array. It shouldn't
 return anything. That means you can't assign to the reference itself
 or the headers will be lost.
 
 Now you can modify, add or remove headers.
 
-The function works indentically for input and output HTTP headers.
+The function works identically for input and output HTTP headers.
 
-See the L<Synopsis> section for an example and more examples can be
-seen in the test suite.
+See the L<Synopsis> section for an example. More examples can be seen
+in the test suite.
 
 =head1 Debug
 
 C<Apache::Filter::HTTPHeadersFixup> includes internal tracing calls,
-which make it easy to debug the parsing of the headers. For example to
-run a test with tracing enabled do:
+which make it easy to debug the parsing of the headers.
+
+First change the constant DEBUG to 1 in
+C<Apache::Filter::HTTPHeadersFixup>. Then enable Apache-Test debug
+tracing. For example to run a test with tracing enabled do:
 
   % t/TEST -trace=debug -v manip/out_append
 
-Or you can set the C<APACHE_TEST_TRACE_LEVEL> to I<debug> at the
-server startup:
+Or you can set the C<APACHE_TEST_TRACE_LEVEL> environment variable to
+I<debug> at the server startup:
 
   APACHE_TEST_TRACE_LEVEL=debug apachectl start
 
@@ -313,4 +332,3 @@ can redistribute it and/or modify it under the same terms as Perl
 itself.
 
 =cut
-

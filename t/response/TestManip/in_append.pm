@@ -40,7 +40,7 @@ sub response {
     $r->print($data);
 
     # copy the input header to output headers
-    $r->headers_out->set($key => $r->headers_in->get($key));
+    $r->headers_out->set($key => $r->headers_in->get($key)||'');
 
     return Apache::OK;
 }

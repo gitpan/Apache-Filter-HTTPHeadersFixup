@@ -2,6 +2,7 @@ lib/Apache/Filter/HTTPHeadersFixup.pm
 Makefile.PL
 MANIFEST
 Changes
+TODO
 t/conf/extra.conf.in
 t/conf/modperl_extra.pl
 t/manip/in_append.t

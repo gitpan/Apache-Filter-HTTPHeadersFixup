@@ -1,0 +1,3 @@
+
+- add a separate handler for non-KeepAlive server configs which don't
+  need all the extra checks overhead

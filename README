@@ -34,10 +34,12 @@ Synopsis
 Description
     "Apache::Filter::HTTPHeadersFixup" is a super class which provides an
     easy way to manipulate HTTP headers without invoking any mod_perl HTTP
-    callbacks. This is accomplished by using input and output connection
+    handlers. This is accomplished by using input and/or output connection
     filters.
 
-    This class cannot be used as is. It has to be subclassed. Read on.
+    It supports KeepAlive connections.
+
+    This class cannot be used as is. It has to be sub-classed. Read on.
 
 Usage
     A new class inheriting from "Apache::Filter::HTTPHeadersFixup" needs to
@@ -46,26 +48,29 @@ Usage
     from and a reference to an array of headers, each terminated with a new
     line.
 
-    That function can manipulate the values in that hash. It shouldn't
+    That function can manipulate the values in that array. It shouldn't
     return anything. That means you can't assign to the reference itself or
     the headers will be lost.
 
     Now you can modify, add or remove headers.
 
-    The function works indentically for input and output HTTP headers.
+    The function works identically for input and output HTTP headers.
 
-    See the Synopsis section for an example and more examples can be seen in
+    See the Synopsis section for an example. More examples can be seen in
     the test suite.
 
 Debug
     "Apache::Filter::HTTPHeadersFixup" includes internal tracing calls,
-    which make it easy to debug the parsing of the headers. For example to
-    run a test with tracing enabled do:
+    which make it easy to debug the parsing of the headers.
+
+    First change the constant DEBUG to 1 in
+    "Apache::Filter::HTTPHeadersFixup". Then enable Apache-Test debug
+    tracing. For example to run a test with tracing enabled do:
 
       % t/TEST -trace=debug -v manip/out_append
 
-    Or you can set the "APACHE_TEST_TRACE_LEVEL" to *debug* at the server
-    startup:
+    Or you can set the "APACHE_TEST_TRACE_LEVEL" environment variable to
+    *debug* at the server startup:
 
       APACHE_TEST_TRACE_LEVEL=debug apachectl start
 

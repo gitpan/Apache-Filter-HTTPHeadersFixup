@@ -11,7 +11,9 @@ use Apache::TestMM qw(test clean);
 
 # prerequisites
 my %require = (
-    "mod_perl" => "1.9911", # 1.99_10 has a bug in filters insertion code
+    # the keepalive constants and the keepalives() method added in 1.9913
+    "mod_perl" => "1.9913",
+
 );
 
 my @scripts = qw(t/TEST);
