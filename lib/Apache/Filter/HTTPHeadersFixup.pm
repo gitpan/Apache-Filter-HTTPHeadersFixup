@@ -1,6 +1,6 @@
 package Apache::Filter::HTTPHeadersFixup;
 
-$Apache::Filter::HTTPHeadersFixup::VERSION = '0.02_01';
+$Apache::Filter::HTTPHeadersFixup::VERSION = '0.02';
 
 use strict;
 use warnings FATAL => 'all';
@@ -73,8 +73,8 @@ sub context {
         mydebug "a new request resetting the input filter state";
 
         $ctx->{buckets}             = [];
-        $ctx->{seen_body_separator} = 0;
         $ctx->{done_with_headers}   = 0;
+        $ctx->{seen_body_separator} = 0;
         $ctx->{keepalives} = $c->keepalives;
     }
 
