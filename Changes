@@ -1,5 +1,9 @@
 Apache::Filter::HTTPHeadersFixup Changes file
 
+0.03 - Wed Apr 14 13:21:07 PDT 2004
+
+- fix the headers resetting bug [John D.Lima <lima@5cats.org>]
+
 0.02 - Mon Mar  1 19:01:42 PST 2004
 
 - by default disable the debug calls (which were consuming time even
