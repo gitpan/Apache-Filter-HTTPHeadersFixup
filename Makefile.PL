@@ -12,8 +12,8 @@ use Apache::TestMM qw(test clean);
 # prerequisites
 my %require = (
     # the keepalive constants and the keepalives() method added in 1.9913
-    "mod_perl" => "1.9913",
-
+    "mod_perl"      => "1.9915",
+    "Apache::Test"  => "1.10", # ipv6 fixes
 );
 
 my @scripts = qw(t/TEST);

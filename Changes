@@ -1,8 +1,22 @@
 Apache::Filter::HTTPHeadersFixup Changes file
 
+0.04 -
+
+- adjust the code to use the latest mod_perl 2.0 API (require 1.99_15
+  for mp2 builds)
+
+- require at least Apache::Test 0.15 (changed order of t_cmp)
+
+- use the faster $bb->flatten to get the data in output filter handler
+  (instead of manually traversing bb)
+
+
+
 0.03 - Wed Apr 14 13:21:07 PDT 2004
 
 - fix the headers resetting bug [John D.Lima <lima@5cats.org>]
+
+
 
 0.02 - Mon Mar  1 19:01:42 PST 2004
 
@@ -12,6 +26,8 @@ Apache::Filter::HTTPHeadersFixup Changes file
 - now works over KeepAlive connections (adjust tests to test that)
 
 - documenations fixes [Adam Sjøgren <asjo@koldfront.dk>]
+
+
 
 0.01 - Mon Dec 22 13:06:25 PST 2003
 

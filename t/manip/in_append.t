@@ -25,7 +25,7 @@ plan tests => 6 * $times;
 Apache::TestRequest::user_agent(reset => 1, keep_alive => 0);
 validate() for 1..$non_keep_alive_times;
 
-# try keepalive conns
+## try keepalive conns
 Apache::TestRequest::user_agent(reset => 1, keep_alive => 1);
 validate() for 1..$keep_alive_times;
 
@@ -41,26 +41,26 @@ sub validate {
     {
         my $res = HEAD $location;
 
-        ok t_cmp("", $res->content, "there should be no content / HEAD");
+        ok t_cmp $res->content, "", "there should be no content / HEAD";
 
-        ok t_cmp($val, $res->header($key)||'', "appended header / HEAD ");
+        ok t_cmp $res->header($key)||'', $val, "appended header / HEAD ";
     }
 
     {
         my $res = GET $location;
 
-        ok t_cmp("", $res->content, "there should be no content / GET");
+        ok t_cmp $res->content, "", "there should be no content / GET";
 
-        ok t_cmp($val, $res->header($key)||'', "appended header / GET ");
+        ok t_cmp $res->header($key)||'', $val, "appended header / GET ";
     }
 
     {
         my $content = "Wet Grasslands";
         my $res = POST $location, content  => $content;
 
-        ok t_cmp($content, $res->content, "the content came through");
+        ok t_cmp $res->content, $content, "the content came through";
 
-        ok t_cmp($val, $res->header($key)||'', "appended header / POST");
+        ok t_cmp $res->header($key)||'', $val, "appended header / POST";
     }
 
 }

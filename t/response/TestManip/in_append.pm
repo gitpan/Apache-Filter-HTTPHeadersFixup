@@ -37,6 +37,7 @@ sub response {
         : '';
 
     $r->content_type('text/plain');
+    debug "response data: [$data]";
     $r->print($data);
 
     # copy the input header to output headers
@@ -51,7 +52,7 @@ __END__
 <VirtualHost TestManip::in_append>
   # must be preloaded so the FilterConnectionHandler attributes will
   # be set by the time the filter is inserted into the filter chain
-  PerlModule TestManip::in_append
+  PerlModule             TestManip::in_append
   PerlInputFilterHandler TestManip::in_append
   <Location /TestManip__in_append>
      SetHandler modperl

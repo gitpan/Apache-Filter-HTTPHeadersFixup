@@ -1,11 +1,11 @@
 package Apache::Filter::HTTPHeadersFixup;
 
-$Apache::Filter::HTTPHeadersFixup::VERSION = '0.03';
+$Apache::Filter::HTTPHeadersFixup::VERSION = '0.04';
 
 use strict;
 use warnings FATAL => 'all';
 
-use mod_perl 1.9913;
+use mod_perl 1.9915;
 
 use base qw(Apache::Filter);
 
@@ -94,12 +94,7 @@ sub handle_output {
         return Apache::OK;
     }
 
-    my $data = '';
-    for (my $b = $bb->first; $b; $b = $bb->next($b)) {
-        $b->read(my $bdata);
-        $bdata = '' unless defined $bdata;
-        $data .= $bdata;
-    }
+    $bb->flatten(my $data);
 
     mydebug "data: $data\n";
 
@@ -155,21 +150,19 @@ sub handle_input {
         my $rv = $f->next->get_brigade($ctx_bb, $mode, $block, $readbytes);
         return $rv unless $rv == APR::SUCCESS;
 
-        while (!$ctx_bb->empty) {
-            my $data;
-            my $bucket = $ctx_bb->first;
+        while (!$ctx_bb->is_empty) {
+            my $b = $ctx_bb->first;
 
-            $bucket->remove;
-
-            if ($bucket->is_eos) {
+            if ($b->is_eos) {
                 mydebug "EOS!!!";
-                $bb->insert_tail($bucket);
+                $b->remove;
+                $bb->insert_tail($b);
                 last;
             }
 
-            my $status = $bucket->read($data);
+            $b->read(my $data);
+            $b->remove; # must remove after read, not before
             mydebug "filter read:\n[$data]";
-            return $status unless $status == APR::SUCCESS;
 
             if ($data =~ /^[\r\n]+$/) {
                 # normally the body will start coming in the next call to
